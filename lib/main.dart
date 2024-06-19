@@ -241,19 +241,24 @@ class _CurrentWeatherScreenState extends State<CurrentWeatherScreen> {
   String _humidity = '';
   String _windSpeed = '';
   String _weatherIcon = 'assets/images/clear.png';
+  int? _aqi;
+  Color _airQualityColor = Colors.white;
   String _airQualityMessage = '';
-  Color _airQualityColor = Colors.green; // default color
+
+  List<HourlyForecast> _hourlyForecasts = [];
 
   @override
   void initState() {
     super.initState();
     fetchCurrentWeather();
+    fetchHourlyForecast();
     fetchAirQuality();
   }
 
   Future<void> fetchCurrentWeather() async {
     final response = await http.get(
-      Uri.parse('https://api.openweathermap.org/data/2.5/weather?q=${widget.cityName},${widget.countryCode}&appid=${widget.apiKey}&units=metric'),
+      Uri.parse(
+          'https://api.openweathermap.org/data/2.5/weather?q=${widget.cityName},${widget.countryCode}&appid=${widget.apiKey}&units=metric'),
     );
 
     if (response.statusCode == 200) {
@@ -265,12 +270,14 @@ class _CurrentWeatherScreenState extends State<CurrentWeatherScreen> {
         _description = data['weather'][0]['description'];
         _humidity = '${data['main']['humidity']} %';
         _windSpeed = '${data['wind']['speed']} m/s';
-        _weatherIcon = widget.weatherImages[weatherMain] ?? 'assets/images/clear.png';
+        _weatherIcon =
+            widget.weatherImages[weatherMain] ?? 'assets/images/clear.png';
       });
     } else {
       setState(() {
         _temperature = '';
-        _description = 'Request failed with status: ${response.statusCode}';
+        _description =
+        'Request failed with status: ${response.statusCode}';
         _humidity = '';
         _windSpeed = '';
         _weatherIcon = 'assets/images/error.png';
@@ -278,253 +285,302 @@ class _CurrentWeatherScreenState extends State<CurrentWeatherScreen> {
     }
   }
 
+  Future<void> fetchHourlyForecast() async {
+    final response = await http.get(
+      Uri.parse(
+          'https://api.openweathermap.org/data/2.5/forecast?q=${widget.cityName},${widget.countryCode}&appid=${widget.apiKey}&units=metric'),
+    );
+
+    if (response.statusCode == 200) {
+      Map<String, dynamic> data = jsonDecode(response.body);
+      List<dynamic> hourlyData = data['list'];
+
+      setState(() {
+        _hourlyForecasts = hourlyData.map((e) => HourlyForecast.fromJson(e)).toList();
+      });
+    } else {
+      print('Failed to load hourly forecast');
+    }
+  }
+
   Future<void> fetchAirQuality() async {
     final response = await http.get(
-      Uri.parse('https://api.openweathermap.org/data/2.5/air_pollution?lat=${widget.cityName}&lon=${widget.countryCode}&appid=${widget.apiKey}'),
+      Uri.parse(
+          'https://api.openweathermap.org/data/2.5/air_pollution?lat=35&lon=139&appid=${widget.apiKey}'),
     );
 
     if (response.statusCode == 200) {
       Map<String, dynamic> data = jsonDecode(response.body);
       int aqi = data['list'][0]['main']['aqi'];
-      Map<String, dynamic> components = data['list'][0]['components'];
-
       setState(() {
-        _airQualityMessage = getAirQualityMessage(aqi);
-        _airQualityColor = getAirQualityColor(aqi);
+        _aqi = aqi;
+        _airQualityColor = getAirQualityColor(_aqi!);
+        _airQualityMessage = getAirQualityMessage(_aqi!);
       });
     } else {
       setState(() {
-        _airQualityMessage = 'Failed to fetch air quality data';
-        _airQualityColor = Colors.grey;
+        _airQualityMessage = 'Failed to fetch air data.';
       });
-    }
-  }
-
-  String getAirQualityMessage(int aqi) {
-    switch (aqi) {
-      case 1:
-        return 'Qualidade do ar boa. Sem riscos à saúde.';
-      case 2:
-        return 'Qualidade do ar aceitável. Pessoas sensíveis devem evitar atividades ao ar livre prolongadas.';
-      case 3:
-        return 'Qualidade do ar moderada. Pessoas sensíveis podem ter efeitos à saúde.';
-      case 4:
-        return 'Qualidade do ar ruim. Alerta de saúde: todos podem experimentar efeitos à saúde; recomenda-se redução de atividades ao ar livre.';
-      case 5:
-        return 'Qualidade do ar muito ruim. Todos devem evitar atividades ao ar livre.';
-      default:
-        return 'Sem dados disponíveis.';
     }
   }
 
   Color getAirQualityColor(int aqi) {
-    switch (aqi) {
-      case 1:
-        return Colors.green;
-      case 2:
-        return Colors.yellow;
-      case 3:
-        return Colors.orange;
-      case 4:
-        return Colors.red;
-      case 5:
-        return Colors.purple;
-      default:
-        return Colors.grey;
+    if (aqi >= 0 && aqi <= 50) {
+      return Colors.green;
+    } else if (aqi >= 51 && aqi <= 100) {
+      return Colors.yellow;
+    } else if (aqi >= 101 && aqi <= 150) {
+      return Colors.orange;
+    } else if (aqi >= 151 && aqi <= 200) {
+      return Colors.red;
+    } else if (aqi >= 201 && aqi <= 300) {
+      return Colors.purple;
+    } else {
+      return Colors.black;
+    }
+  }
+
+  String getAirQualityMessage(int aqi) {
+    if (aqi >= 0 && aqi <= 50) {
+      return 'Qualidade do ar boa. Aproveite!';
+    } else if (aqi >= 51 && aqi <= 100) {
+      return 'Qualidade do ar moderada. Pessoas sensíveis podem sentir impactos.';
+    } else if (aqi >= 101 && aqi <= 150) {
+      return 'Qualidade do ar não saudável para grupos sensíveis.';
+    } else if (aqi >= 151 && aqi <= 200) {
+      return 'Qualidade do ar não saudável. Todos podem começar a sentir efeitos na saúde.';
+    } else if (aqi >= 201 && aqi <= 300) {
+      return 'Qualidade do ar muito ruim. Alerta de saúde: todos podem experimentar efeitos mais graves na saúde.';
+    } else {
+      return 'Qualidade do ar perigosa. A saúde pode ser impactada severamente.';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    bool isFixedLocation = widget.cityName == 'yourFixedCityName' && widget.countryCode == 'yourFixedCountryCode';
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Clima Atual'),
+        title: Text('${widget.cityName}, ${widget.countryCode}'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.info),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AirQualityScreen(
+                    cityName: widget.cityName,
+                    countryCode: widget.countryCode,
+                    apiKey: widget.apiKey,
+                  ),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: Icon(Icons.push_pin),
+            onPressed: () {
+              widget.saveFixedLocation(widget.cityName, widget.countryCode);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                      'Localização fixa atualizada para: ${widget.cityName}, ${widget.countryCode}'),
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(
-                _weatherIcon,
-                height: 100,
-                width: 100,
-              ),
-              SizedBox(height: 20),
-              Text(
-                'Cidade: ${widget.cityName}',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  _weatherIcon,
+                  width: 100,
+                  height: 100,
                 ),
-              ),
-              SizedBox(height: 10),
-              Text(
-                'Temperatura: $_temperature',
-                style: TextStyle(
-                  fontSize: 18,
+                SizedBox(height: 20),
+                Text(
+                  '$_temperature',
+                  style: TextStyle(fontSize: 24),
                 ),
-              ),
-              SizedBox(height: 5),
-              Text(
-                'Clima: $_description',
-                style: TextStyle(
-                  fontSize: 18,
+                Text(
+                  '$_description',
+                  style: TextStyle(fontSize: 18),
                 ),
-              ),
-              SizedBox(height: 20),
-              Text(
-                'Umidade: $_humidity',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[700],
-                ),
-              ),
-              Text(
-                'Velocidade do Vento: $_windSpeed',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[700],
-                ),
-              ),
-              SizedBox(height: 20),
-              Container(
-                padding: EdgeInsets.all(10),
-                color: _airQualityColor.withOpacity(0.2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    Text(
-                      'Qualidade do Ar: $_airQualityMessage',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: _airQualityColor,
-                      ),
+                    Column(
+                      children: [
+                        Text(
+                          'Umidade',
+                          style: TextStyle(fontSize: 18),
+                        ),
+                        Text('$_humidity'),
+                      ],
                     ),
-                    SizedBox(height: 10),
-                    Text(
-                      'Recomendações:',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: _airQualityColor,
-                      ),
-                    ),
-                    SizedBox(height: 5),
-                    Text(
-                      getAirQualityRecommendations(),
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: _airQualityColor,
-                      ),
+                    Column(
+                      children: [
+                        Text(
+                          'Vel. do Vento',
+                          style: TextStyle(fontSize: 18),
+                        ),
+                        Text('$_windSpeed'),
+                      ],
                     ),
                   ],
                 ),
-              ),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: Text('Mais Informações'),
-                      content: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('Cidade: ${widget.cityName}'),
-                          Text('País: ${widget.countryCode}'),
-                          Text('Temperatura: $_temperature'),
-                          Text('Clima: $_description'),
-                          Text('Umidade: $_humidity'),
-                          Text('Velocidade do Vento: $_windSpeed'),
-                          SizedBox(height: 10),
-                          Container(
-                            padding: EdgeInsets.all(10),
-                            color: _airQualityColor.withOpacity(0.2),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Qualidade do Ar: $_airQualityMessage',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: _airQualityColor,
-                                  ),
-                                ),
-                                SizedBox(height: 10),
-                                Text(
-                                  'Recomendações:',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: _airQualityColor,
-                                  ),
-                                ),
-                                SizedBox(height: 5),
-                                Text(
-                                  getAirQualityRecommendations(),
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: _airQualityColor,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                          },
-                          child: Text('Fechar'),
+                SizedBox(height: 20),
+                Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: _airQualityColor,
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Qualidade do Ar',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
-                    ),
-                  );
-                },
-                child: const Text('Mais Informações'),
-              ),
-              if (!isFixedLocation)
-                ElevatedButton(
-                  onPressed: () {
-                    widget.saveFixedLocation(widget.cityName, widget.countryCode);
-                  },
-                  child: const Text('Fixar Localização'),
+                      ),
+                      SizedBox(height: 5),
+                      Text(
+                        '$_airQualityMessage',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ],
+                  ),
                 ),
-            ],
+                SizedBox(height: 20),
+                Text(
+                  'Previsão do Tempo para as próximas horas:',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 10),
+                if (_hourlyForecasts.isNotEmpty)
+                  Column(
+                    children: _hourlyForecasts
+                        .map((forecast) => HourlyForecastWidget(forecast))
+                        .toList(),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+}
 
-  String getAirQualityRecommendations() {
-    // Exemplo de recomendações com base no índice de qualidade do ar (AQI)
-    // Adaptar conforme orientações oficiais de saúde pública para qualidade do ar
-    if (_airQualityMessage.contains('boa')) {
-      return 'Não é necessário tomar precauções adicionais.';
-    } else if (_airQualityMessage.contains('aceitável')) {
-      return 'Pessoas sensíveis devem considerar limitar o tempo ao ar livre.';
-    } else if (_airQualityMessage.contains('moderada')) {
-      return 'Pessoas sensíveis podem experimentar efeitos à saúde; considere limitar o tempo ao ar livre.';
-    } else if (_airQualityMessage.contains('ruim')) {
-      return 'Todos podem experimentar efeitos à saúde; evite atividades ao ar livre e considere o uso de máscaras de proteção.';
-    } else if (_airQualityMessage.contains('muito ruim')) {
-      return 'Evite atividades ao ar livre; use máscaras de proteção se necessário e considere fechar portas e janelas.';
+class AirQualityScreen extends StatelessWidget {
+  final String cityName;
+  final String countryCode;
+  final String apiKey;
+
+  AirQualityScreen({
+    required this.cityName,
+    required this.countryCode,
+    required this.apiKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Qualidade do Ar - $cityName, $countryCode'),
+      ),
+      body: Center(
+        child: FutureBuilder(
+          future: fetchAirQuality(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return CircularProgressIndicator();
+            } else {
+              if (snapshot.hasError) {
+                return Text('Erro ao carregar dados: ${snapshot.error}');
+              } else {
+                return Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.cloud,
+                        size: 100,
+                        color: Colors.grey,
+                      ),
+                      SizedBox(height: 20),
+                      Text(
+                        'Qualidade do Ar',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        snapshot.data.toString(),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 18),
+                      ),
+                    ],
+                  ),
+                );
+              }
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<String> fetchAirQuality() async {
+    final response = await http.get(
+      Uri.parse(
+          'https://api.openweathermap.org/data/2.5/air_pollution?lat=35&lon=139&appid=$apiKey'),
+    );
+
+    if (response.statusCode == 200) {
+      Map<String, dynamic> data = jsonDecode(response.body);
+      int aqi = data['list'][0]['main']['aqi'];
+      return getAirQualityMessage(aqi);
     } else {
-      return 'Sem recomendações disponíveis.';
+      return 'Falha ao obter dados de qualidade do ar';
+    }
+  }
+
+  String getAirQualityMessage(int aqi) {
+    if (aqi >= 0 && aqi <= 50) {
+      return 'Qualidade do ar boa. Aproveite!';
+    } else if (aqi >= 51 && aqi <= 100) {
+      return 'Qualidade do ar moderada. Pessoas sensíveis podem sentir impactos.';
+    } else if (aqi >= 101 && aqi <= 150) {
+      return 'Qualidade do ar não saudável para grupos sensíveis.';
+    } else if (aqi >= 151 && aqi <= 200) {
+      return 'Qualidade do ar não saudável. Todos podem começar a sentir efeitos na saúde.';
+    } else if (aqi >= 201 && aqi <= 300) {
+      return 'Qualidade do ar muito ruim. Alerta de saúde: todos podem experimentar efeitos mais graves na saúde.';
+    } else {
+      return 'Qualidade do ar perigosa. A saúde pode ser impactada severamente.';
     }
   }
 }
 
-class WeatherForecastScreen extends StatefulWidget {
+class WeatherForecastScreen extends StatelessWidget {
   final String cityName;
   final String countryCode;
   final String apiKey;
@@ -538,104 +594,91 @@ class WeatherForecastScreen extends StatefulWidget {
   });
 
   @override
-  _WeatherForecastScreenState createState() => _WeatherForecastScreenState();
-}
-
-class _WeatherForecastScreenState extends State<WeatherForecastScreen> {
-  List<Map<String, dynamic>> _forecast = [];
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  Future<void> fetchWeatherForecast() async {
-    final response = await http.get(
-      Uri.parse('https://api.openweathermap.org/data/2.5/forecast?q=${widget.cityName},${widget.countryCode}&appid=${widget.apiKey}&units=metric'),
-    );
-
-    if (response.statusCode == 200) {
-      Map<String, dynamic> data = jsonDecode(response.body);
-      List<Map<String, dynamic>> forecast = [];
-
-      for (var entry in data['list']) {
-        forecast.add({
-          'date': entry['dt_txt'],
-          'temperature': entry['main']['temp'],
-          'description': entry['weather'][0]['description'],
-          'icon': widget.weatherImages[entry['weather'][0]['main']] ?? 'assets/images/clear.png',
-        });
-      }
-
-      setState(() {
-        _forecast = forecast;
-      });
-    } else {
-      setState(() {
-        _forecast = [];
-      });
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Previsão do Tempo'),
+        title: Text('Previsão do Tempo - $cityName, $countryCode'),
       ),
       body: Center(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton(
-                  onPressed: () {
-                    fetchWeatherForecast();
-                  },
-                  child: const Text('Obter Previsão'),
-                ),
-                SizedBox(height: 20),
-                _forecast.isNotEmpty ? buildForecastList() : Container(),
-              ],
-            ),
-          ),
-        ),
+        child: CircularProgressIndicator(),
       ),
     );
   }
+}
 
-  Widget buildForecastList() {
-    return ListView.builder(
-      shrinkWrap: true,
-      itemCount: _forecast.length,
-      itemBuilder: (context, index) {
-        return Card(
-          elevation: 3,
-          margin: EdgeInsets.symmetric(vertical: 10),
-          child: ListTile(
-            leading: Image.asset(
-              _forecast[index]['icon'],
-              width: 50,
-              height: 50,
-            ),
-            title: Text(
-              'Data: ${_forecast[index]['date']}',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Temperatura: ${_forecast[index]['temperature']} °C'),
-                Text('Clima: ${_forecast[index]['description']}'),
-              ],
-            ),
+class HourlyForecast {
+  final String time;
+  final String temperature;
+  final String weatherIcon;
+
+  HourlyForecast({
+    required this.time,
+    required this.temperature,
+    required this.weatherIcon,
+  });
+
+  factory HourlyForecast.fromJson(Map<String, dynamic> json) {
+    String time = json['dt_txt'];
+    String temperature = json['main']['temp'].toString() + ' °C';
+    String weatherMain = json['weather'][0]['main'];
+    String weatherIcon = getWeatherIcon(weatherMain);
+
+    return HourlyForecast(
+      time: time,
+      temperature: temperature,
+      weatherIcon: weatherIcon,
+    );
+  }
+
+  static String getWeatherIcon(String weatherMain) {
+    switch (weatherMain) {
+      case 'Clear':
+        return 'assets/images/clear.png';
+      case 'Clouds':
+        return 'assets/images/clouds.png';
+      case 'Rain':
+        return 'assets/images/rain.png';
+      case 'Snow':
+        return 'assets/images/snow.png';
+      case 'Thunderstorm':
+        return 'assets/images/thunderstorm.png';
+      case 'Drizzle':
+        return 'assets/images/drizzle.png';
+      case 'Mist':
+        return 'assets/images/mist.png';
+      default:
+        return 'assets/images/error.png';
+    }
+  }
+}
+
+class HourlyForecastWidget extends StatelessWidget {
+  final HourlyForecast forecast;
+
+  HourlyForecastWidget(this.forecast);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          Text(
+            forecast.time.substring(11, 16),
+            style: TextStyle(fontSize: 16),
           ),
-        );
-      },
+          Image.asset(
+            forecast.weatherIcon,
+            width: 40,
+            height: 40,
+          ),
+          Text(
+            forecast.temperature,
+            style: TextStyle(fontSize: 16),
+          ),
+        ],
+      ),
     );
   }
 }
